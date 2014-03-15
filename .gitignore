@@ -9,8 +9,6 @@ doc/html/
 doc/latex/
 doc/introspected-doxygen.h
 doc/ns3-object.txt
-scratch/*
-!scratch/scratch-simulator.cc
 
 # python build
 *.py[cod]
@@ -19,6 +17,7 @@ testpy-output/
 # c++ build
 
 # simulation output
+/*.log
 /*.pcap
 /*.png
 

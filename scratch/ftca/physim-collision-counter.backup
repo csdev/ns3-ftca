@@ -1,0 +1,84 @@
+/*
+ * physim-collision-counter.cc
+ *
+ *  Created on: Sep 18, 2013
+ *      Author: cs
+ */
+
+#include "physim-collision-counter.h"
+
+NS_LOG_COMPONENT_DEFINE ("sim::PhySimCollisionCounter");
+
+namespace sim {
+
+PhySimCollisionCounter::PhySimCollisionCounter ()
+{
+  m_counters.data_data = 0;
+  m_counters.data_ack = 0;
+  m_counters.ack_ack = 0;
+}
+
+PhySimCollisionCounter::~PhySimCollisionCounter ()
+{
+}
+
+void
+PhySimCollisionCounter::Enable ()
+{
+  Config::Connect (TraceUtils::phySimWifiTracePath ("Collision", -1),
+      MakeCallback (&PhySimCollisionCounter::PhyCollisionTrace, this));
+}
+
+void
+PhySimCollisionCounter::PhyCollisionTrace (std::string context, Ptr<PhySimInterferenceHelper::Event> event,
+    const std::list<Ptr<PhySimInterferenceHelper::Event> >& interferenceEvents)
+{
+  Ptr<const Packet> packet = event->GetPacket ();
+  Ptr<PhySimWifiPhyTag> tag = event->GetWifiPhyTag ();
+
+  // Non-promiscuous trace -- ignore packets intended for other nodes
+  MacTag addrTag;
+  bool hasAddrTag = packet->PeekPacketTag (addrTag);
+  if (!hasAddrTag || (addrTag.GetAddress () != tag->GetRxNetDevice()->GetAddress()) )
+    return;
+
+  enum DpiTag::PacketType type = DpiTag::GetPacketType (packet);
+
+  for (std::list<Ptr<PhySimInterferenceHelper::Event> >::const_iterator itr = interferenceEvents.begin ();
+      itr != interferenceEvents.end (); itr++)
+    {
+      if ((*itr) == event || !(*itr)->Overlaps (event))
+        continue;
+
+      Ptr<const Packet> interferencePacket = (*itr)->GetPacket ();
+//      Ptr<PhySimWifiPhyTag> interferenceTag = (*itr)->GetWifiPhyTag ();
+      enum DpiTag::PacketType interferenceType = DpiTag::GetPacketType (interferencePacket);
+
+      if (type == DpiTag::MAC_ACK || interferenceType == DpiTag::MAC_ACK)
+        {
+          // these collisions are very rare and we are not really interested in them
+          NS_LOG_DEBUG ("Collision involving MAC layer ACK");
+          return;
+        }
+
+      if (type == DpiTag::TCP_ACK && interferenceType == DpiTag::TCP_ACK)
+        m_counters.ack_ack++;
+      else if (type == DpiTag::TCP_ACK || interferenceType == DpiTag::TCP_ACK)
+        m_counters.data_ack++;
+      else
+        m_counters.data_data++;
+
+      //TODO ignore 3-way packet collisions (also assumed to be rare)
+      break;
+    }
+}
+
+void
+PhySimCollisionCounter::PrintCounters (std::ostream& out)
+{
+  out << "Data-Data: " << m_counters.data_data << std::endl;
+  out << "Data-ACK:  " << m_counters.data_ack << std::endl;
+  out << "ACK-ACK:   " << m_counters.ack_ack << std::endl;
+}
+
+} /* namespace sim */
